@@ -1,0 +1,458 @@
+config:
+  default_byte_order: BE
+  buffer_address_type: u8
+  command_address_type: u8
+  register_address_type: u8
+  defmt_feature: defmt-03
+
+INTERRUPT_STATUS_1:
+  type: register
+  description: Interrupt Status 1
+  address: 0x00
+  size_bits: 8
+  reset_value: 0x00
+  access: RO
+  fields:
+    A_FULL:
+      base: bool
+      start: 7
+      access: RO
+      description: |
+        FIFO Almost Full Flag
+        0: No interrupt
+        1: FIFO almost full interrupt has been triggered
+    PPG_RDY:
+      base: bool
+      start: 6
+      access: RO
+      description: |
+        New FIFO Data Ready
+        0: No interrupt
+        1: New FIFO data is ready to be read
+    ALC_OVF:
+      base: bool
+      start: 5
+      access: RO
+      description: |
+        Ambient Light Cancellation Overflow
+        0: No overflow
+        1: Ambient light cancellation function has reached its maximum limit
+    PWR_RDY:
+      base: bool
+      start: 0
+      access: RO
+      description: |
+        Power Ready Flag
+        0: Not ready
+        1: Power-up sequence has finished and device is ready
+
+INTERRUPT_STATUS_2:
+  type: register
+  description: Interrupt Status 2
+  address: 0x01
+  size_bits: 8
+  reset_value: 0x00
+  access: RO
+  fields:
+    DIE_TEMP_RDY:
+      base: bool
+      start: 1
+      access: RO
+      description: |
+        Internal Die Temperature Ready Flag
+        0: Temperature conversion not complete
+        1: Temperature conversion is complete
+
+INTERRUPT_ENABLE_1:
+  type: register
+  description: Interrupt Enable 1
+  address: 0x02
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    A_FULL_EN:
+      base: bool
+      start: 7
+      access: RW
+      description: |
+        FIFO Almost Full Interrupt Enable
+        0: Disabled
+        1: Enabled
+    PPG_RDY_EN:
+      base: bool
+      start: 6
+      access: RW
+      description: |
+        New FIFO Data Ready Interrupt Enable
+        0: Disabled
+        1: Enabled
+    ALC_OVF_EN:
+      base: bool
+      start: 5
+      access: RW
+      description: |
+        Ambient Light Cancellation Overflow Interrupt Enable
+        0: Disabled
+        1: Enabled
+
+INTERRUPT_ENABLE_2:
+  type: register
+  description: Interrupt Enable 2
+  address: 0x03
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    DIE_TEMP_RDY_EN:
+      base: bool
+      start: 1
+      access: RW
+      description: |
+        Internal Die Temperature Ready Interrupt Enable
+        0: Disabled
+        1: Enabled
+
+FIFO_WR_PTR:
+  type: register
+  description: FIFO Write Pointer
+  address: 0x04
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    FIFO_WR_PTR:
+      base: uint
+      start: 0
+      end: 5
+      access: RW
+      description: |
+        FIFO Write Pointer. Points to the location where the next sample will be written.
+
+OVF_COUNTER:
+  type: register
+  description: Overflow Counter
+  address: 0x05
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    OVF_COUNTER:
+      base: uint
+      start: 0
+      end: 5
+      access: RO
+      description: |
+        FIFO Overflow Counter. Counts the number of samples lost due to FIFO overflow.
+
+FIFO_RD_PTR:
+  type: register
+  description: FIFO Read Pointer
+  address: 0x06
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    FIFO_RD_PTR:
+      base: uint
+      start: 0
+      end: 5
+      access: RW
+      description: |
+        FIFO Read Pointer. Points to the location from where the next sample will be read.
+
+FIFO_DATA_REG:
+  type: register
+  description: FIFO Data Register
+  address: 0x07
+  size_bits: 8
+  access: RO
+
+FIFO_CONFIG:
+  type: register
+  description: FIFO Configuration
+  address: 0x08
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    SMP_AVE:
+      base: uint
+      start: 5
+      end: 8
+      access: RW
+      description: |
+        Sample Averaging
+      try_conversion:
+        name: SMP_AVE
+        NoAveraging:
+          value: 0b000
+          description: No averaging (1 sample)
+        Avg2:
+          value: 0b001
+          description: 2 samples averaged
+        Avg4:
+          value: 0b010
+          description: 4 samples averaged
+        Avg8:
+          value: 0b011
+          description: 8 samples averaged
+        Avg16:
+          value: 0b100
+          description: 16 samples averaged
+        Avg32:
+          value: 0b101
+          description: 32 samples averaged
+    FIFO_ROLLOVER_EN:
+      base: bool
+      start: 4
+      access: RW
+      description: |
+        FIFO Rollover Enable
+        0: FIFO is not cleared when full; only oldest data is overwritten
+        1: FIFO rolls over when full
+    FIFO_A_FULL:
+      base: uint
+      start: 0
+      end: 4
+      access: RW
+      description: |
+        FIFO Almost Full Value. Number of empty data samples remaining when interrupt is triggered.
+
+MODE_CONFIG:
+  type: register
+  description: Mode Configuration
+  address: 0x09
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    SHDN:
+      base: bool
+      start: 7
+      access: RW
+      description: |
+        Shutdown Control
+        0: Normal operation
+        1: Shutdown mode
+    RESET:
+      base: bool
+      start: 6
+      access: RW
+      description: |
+        Reset Control
+        0: Normal operation
+        1: Reset (self-clearing)
+    MODE:
+      base: uint
+      start: 0
+      end: 3
+      access: RW
+      description: |
+        Operating Mode
+      try_conversion:
+        name: MODE
+        HeartRateOnly:
+          value: 0b010
+          description: Heart Rate mode (red LED only)
+        SpO2:
+          value: 0b011
+          description: SpO2 mode (red and IR LEDs)
+        MultiLED:
+          value: 0b111
+          description: Multi-LED mode
+
+SPO2_CONFIG:
+  type: register
+  description: SpO2 Configuration
+  address: 0x0A
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    SPO2_ADC_RGE:
+      base: uint
+      start: 5
+      end: 7
+      access: RW
+      description: |
+        SpO2 ADC Range Control
+      try_conversion:
+        name: SPO2_ADC_RGE
+        Range2048:
+          value: 0b00
+          description: 2048 nA full scale
+        Range4096:
+          value: 0b01
+          description: 4096 nA full scale
+        Range8192:
+          value: 0b10
+          description: 8192 nA full scale
+        Range16384:
+          value: 0b11
+          description: 16384 nA full scale
+    SPO2_SR:
+      base: uint
+      start: 2
+      end: 5
+      access: RW
+      description: |
+        SpO2 Sample Rate Control
+      try_conversion:
+        name: SPO2_SR
+        Rate50:
+          value: 0b000
+          description: 50 samples per second
+        Rate100:
+          value: 0b001
+          description: 100 samples per second
+        Rate200:
+          value: 0b010
+          description: 200 samples per second
+        Rate400:
+          value: 0b011
+          description: 400 samples per second
+        Rate800:
+          value: 0b100
+          description: 800 samples per second
+        Rate1000:
+          value: 0b101
+          description: 1000 samples per second
+        Rate1600:
+          value: 0b110
+          description: 1600 samples per second
+        Rate3200:
+          value: 0b111
+          description: 3200 samples per second
+    LED_PW:
+      base: uint
+      start: 0
+      end: 2
+      access: RW
+      description: |
+        LED Pulse Width Control
+      try_conversion:
+        name: LED_PW
+        Pw69:
+          value: 0b00
+          description: 69 μs (15-bit ADC resolution)
+        Pw118:
+          value: 0b01
+          description: 118 μs (16-bit ADC resolution)
+        Pw215:
+          value: 0b10
+          description: 215 μs (17-bit ADC resolution)
+        Pw411:
+          value: 0b11
+          description: 411 μs (18-bit ADC resolution)
+
+LED1_PA:
+  type: register
+  description: LED1 (Red LED) Pulse Amplitude
+  address: 0x0C
+  size_bits: 8
+  reset_value: 0x00
+  access: RW
+
+LED2_PA:
+  type: register
+  description: LED2 (IR LED) Pulse Amplitude
+  address: 0x0D
+  size_bits: 8
+  reset_value: 0x00
+  access: RW
+
+MULTI_LED_CTRL_1:
+  type: register
+  description: Multi-LED Mode Control Register 1
+  address: 0x11
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    SLOT2:
+      base: uint
+      start: 4
+      end: 7
+      access: RW
+      description: |
+        Time Slot 2 LED Control (0=None, 1=LED1/Red, 2=LED2/IR, 3=Pilot)
+    SLOT1:
+      base: uint
+      start: 0
+      end: 3
+      access: RW
+      description: |
+        Time Slot 1 LED Control
+      try_conversion:
+        name: SLOT
+        None:
+          value: 0b000
+          description: No LED active
+        Led1:
+          value: 0b001
+          description: LED1 (Red) active
+        Led2:
+          value: 0b010
+          description: LED2 (IR) active
+        Pilot:
+          value: 0b011
+          description: Pilot LED (for proximity detection)
+
+MULTI_LED_CTRL_2:
+  type: register
+  description: Multi-LED Mode Control Register 2
+  address: 0x12
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    SLOT4:
+      base: uint
+      start: 4
+      end: 7
+      access: RW
+      description: |
+        Time Slot 4 LED Control (0=None, 1=LED1/Red, 2=LED2/IR, 3=Pilot)
+    SLOT3:
+      base: uint
+      start: 0
+      end: 3
+      access: RW
+      description: |
+        Time Slot 3 LED Control (0=None, 1=LED1/Red, 2=LED2/IR, 3=Pilot)
+
+DIE_TEMP_INT:
+  type: register
+  description: Die Temperature Integer
+  address: 0x1F
+  size_bits: 8
+  access: RO
+
+DIE_TEMP_FRAC:
+  type: register
+  description: Die Temperature Fraction
+  address: 0x20
+  size_bits: 8
+  access: RO
+
+DIE_TEMP_CONFIG:
+  type: register
+  description: Die Temperature Config
+  address: 0x21
+  size_bits: 8
+  reset_value: 0x00
+  fields:
+    TEMP_EN:
+      base: bool
+      start: 0
+      access: RW
+      description: |
+        Temperature Enable (self-clearing)
+        0: Temperature conversion disabled
+        1: Initiate a single temperature conversion
+
+REV_ID:
+  type: register
+  description: Revision ID
+  address: 0xFE
+  size_bits: 8
+  access: RO
+
+PART_ID:
+  type: register
+  description: Part ID
+  address: 0xFF
+  size_bits: 8
+  reset_value: 0x15
+  access: RO
