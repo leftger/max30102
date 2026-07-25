@@ -1,6 +1,8 @@
 //! Integration tests for MAX30102 driver
 
-use max30102::{Max30102, SlaveAddr, SampleAveraging, AdcRange, SampleRate, PulseWidth, OperatingMode as Mode};
+use max30102::{
+    AdcRange, Max30102, OperatingMode as Mode, PulseWidth, SampleAveraging, SampleRate, SlaveAddr,
+};
 use std::collections::{HashMap, VecDeque};
 
 /// Mock I2C Error type
@@ -181,7 +183,12 @@ impl embedded_hal::i2c::I2c for DummyI2c {
         Ok(())
     }
 
-    fn write_read(&mut self, _address: u8, write: &[u8], read: &mut [u8]) -> Result<(), Self::Error> {
+    fn write_read(
+        &mut self,
+        _address: u8,
+        write: &[u8],
+        read: &mut [u8],
+    ) -> Result<(), Self::Error> {
         if write.is_empty() {
             return Ok(());
         }
@@ -341,7 +348,9 @@ fn test_led_amplitude() {
 fn test_sample_averaging() {
     let mut driver = create_driver();
 
-    driver.set_sample_averaging(SampleAveraging::NoAveraging).unwrap();
+    driver
+        .set_sample_averaging(SampleAveraging::NoAveraging)
+        .unwrap();
     driver.set_sample_averaging(SampleAveraging::Avg2).unwrap();
     driver.set_sample_averaging(SampleAveraging::Avg4).unwrap();
     driver.set_sample_averaging(SampleAveraging::Avg8).unwrap();
@@ -398,7 +407,7 @@ fn test_fifo_available_samples() {
 
 #[test]
 fn test_read_fifo_single_sample() {
-    let mut driver = create_driver();
+    let driver = create_driver();
     let i2c = driver.release();
 
     // Create a new driver with access to mock internals
@@ -421,7 +430,7 @@ fn test_read_fifo_single_sample() {
 
 #[test]
 fn test_read_fifo_multiple_samples() {
-    let mut driver = create_driver();
+    let driver = create_driver();
     let i2c = driver.release();
 
     let mut mock_i2c = i2c;
@@ -452,7 +461,7 @@ fn test_read_fifo_multiple_samples() {
 
 #[test]
 fn test_fifo_pointer_wrap_around() {
-    let mut driver = create_driver();
+    let driver = create_driver();
     let i2c = driver.release();
 
     let mut mock_i2c = i2c;
@@ -473,7 +482,7 @@ fn test_fifo_pointer_wrap_around() {
 
 #[test]
 fn test_read_fifo_buffer() {
-    let mut driver = create_driver();
+    let driver = create_driver();
     let i2c = driver.release();
 
     let mut mock_i2c = i2c;
@@ -622,7 +631,7 @@ fn test_full_initialization_sequence() {
 
 #[test]
 fn test_read_samples_after_configuration() {
-    let mut driver = create_driver();
+    let driver = create_driver();
     let i2c = driver.release();
 
     let mut mock_i2c = i2c;
