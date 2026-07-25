@@ -22,7 +22,7 @@ env:
   NO_STD_CARGO_ARGS: "--no-default-features"
   CLIPPY_ARGS: "--lib --all-features"
   DOCS_ARGS: "--lib --no-deps --all-features"
-  CHECK_ARGS: "--lib --all-features"
+  CHECK_ARGS: "--lib --all-features --locked"
   CI_HOST_TARGET: ""
   CI_UNIT_TEST_ARGS: "--lib --all-features"
   CI_INTEGRATION_TEST_ARGS: "--all-features"
