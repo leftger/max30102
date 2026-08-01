@@ -35,7 +35,7 @@ Add `max30102` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-max30102 = "0.1.0"
+max30102 = "0.1.1"
 ```
 
 ### Feature Flags
@@ -49,7 +49,7 @@ max30102 = "0.1.0"
 ```toml
 # Example for Embassy / Async usage
 [dependencies]
-max30102 = { version = "0.1.0", features = ["embassy"] }
+max30102 = { version = "0.1.1", features = ["embassy"] }
 ```
 
 ---
