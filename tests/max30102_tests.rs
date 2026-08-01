@@ -196,12 +196,10 @@ impl embedded_hal::i2c::I2c for DummyI2c {
         let register_addr = write[0];
 
         for (i, byte) in read.iter_mut().enumerate() {
-            let addr = register_addr + i as u8;
-
-            // Handle FIFO_DATA_REG specially
-            if addr == 0x07 {
+            if register_addr == 0x07 {
                 *byte = self.handle_fifo_read();
             } else {
+                let addr = register_addr + i as u8;
                 *byte = self.registers.get(&addr).copied().unwrap_or(0);
             }
         }
@@ -663,5 +661,41 @@ fn test_revision_id() {
 #[test]
 fn test_verify_part_id() {
     let mut driver = create_driver();
-    driver.verify_part_id().unwrap();
+    assert!(driver.verify_part_id().unwrap());
+}
+
+#[test]
+fn test_multi_led_slots() {
+    use max30102::Slot;
+    let mut driver = create_driver();
+    driver
+        .set_multi_led_slots(Slot::Led1, Slot::Led2, Slot::None, Slot::None)
+        .unwrap();
+}
+
+#[test]
+fn test_overflow_counter() {
+    let mut driver = create_driver();
+    let ovf = driver.read_overflow_counter().unwrap();
+    assert_eq!(ovf, 0);
+}
+
+#[test]
+fn test_led_current_ma() {
+    let mut driver = create_driver();
+    driver.set_led_current_ma(6.2, 12.6).unwrap();
+}
+
+#[test]
+fn test_read_interrupt_flags() {
+    let mut driver = create_driver();
+    let flags = driver.read_interrupt_flags().unwrap();
+    assert!(!flags.almost_full);
+}
+
+#[test]
+fn test_fifo_almost_full_clamping() {
+    let mut driver = create_driver();
+    // Values > 15 should be clamped to 15 without panicking
+    driver.set_fifo_almost_full(25).unwrap();
 }

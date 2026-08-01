@@ -258,6 +258,49 @@ where
     }
 }
 
+/// Combined status of MAX30102 interrupts
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct InterruptFlags {
+    /// FIFO almost full flag
+    pub almost_full: bool,
+    /// New FIFO data ready flag
+    pub data_ready: bool,
+    /// Ambient light cancellation overflow flag
+    pub alc_overflow: bool,
+    /// Power ready flag
+    pub power_ready: bool,
+    /// Die temperature ready flag
+    pub die_temp_ready: bool,
+}
+
+/// Convert LED current in milliamps (0.0 to 51.0 mA) to 8-bit pulse amplitude register value
+#[must_use]
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn ma_to_pulse_amplitude(ma: f32) -> u8 {
+    let clamped = ma.clamp(0.0, 51.0);
+    ((clamped * 5.0) + 0.5) as u8
+}
+
+/// Estimate Red LED junction temperature including thermal self-heating
+///
+/// Per MAX30102 datasheet Table 13, Red LED junction temperature rises above IC die temperature
+/// based on LED current level and duty cycle.
+///
+/// # Arguments
+/// * `die_temp_c` - Sensor die temperature in °C
+/// * `red_current_ma` - Red LED current in mA (0.0 to 51.0)
+/// * `duty_cycle_pct` - Red LED duty cycle percentage (e.g. 8.0, 16.0, 32.0)
+#[must_use]
+pub fn estimate_red_led_temperature(
+    die_temp_c: f32,
+    red_current_ma: f32,
+    duty_cycle_pct: f32,
+) -> f32 {
+    let thermal_rise = (red_current_ma / 50.0) * (duty_cycle_pct / 32.0) * 8.0;
+    die_temp_c + thermal_rise
+}
+
 /// Blocking MAX30102 driver
 pub struct Max30102<I2C> {
     device: Max30102Device<DeviceInterface<I2C>>,
@@ -285,15 +328,10 @@ where
 
     /// Verify the part ID
     ///
-    /// Returns `Ok(())` if the part ID matches the expected value (0x15)
-    pub fn verify_part_id(&mut self) -> Result<(), I2C::Error> {
+    /// Returns `Ok(true)` if the part ID matches the expected value (0x15), `Ok(false)` otherwise.
+    pub fn verify_part_id(&mut self) -> Result<bool, I2C::Error> {
         let part_id: [u8; 1] = self.device.part_id().read()?.into();
-        if part_id[0] != PART_ID {
-            // Part ID mismatch - create a dummy error
-            // Read again to generate an error condition
-            let _ = self.device.part_id().read()?;
-        }
-        Ok(())
+        Ok(part_id[0] == PART_ID)
     }
 
     /// Get the revision ID
@@ -347,6 +385,32 @@ where
     /// Start Multi-LED mode
     pub fn start_multi_led_mode(&mut self) -> Result<(), I2C::Error> {
         self.set_mode(OperatingMode::MultiLed)
+    }
+
+    /// Configure Multi-LED time slots
+    ///
+    /// # Arguments
+    ///
+    /// * `slot1` - LED for time slot 1
+    /// * `slot2` - LED for time slot 2
+    /// * `slot3` - LED for time slot 3
+    /// * `slot4` - LED for time slot 4
+    pub fn set_multi_led_slots(
+        &mut self,
+        slot1: Slot,
+        slot2: Slot,
+        slot3: Slot,
+        slot4: Slot,
+    ) -> Result<(), I2C::Error> {
+        self.device.multi_led_ctrl_1().write(|w| {
+            w.set_slot_1(slot1);
+            w.set_slot_2(slot2);
+        })?;
+        self.device.multi_led_ctrl_2().write(|w| {
+            w.set_slot_3(slot3);
+            w.set_slot_4(slot4);
+        })?;
+        Ok(())
     }
 
     /// Configure sample rate
@@ -407,6 +471,13 @@ where
         Ok(())
     }
 
+    /// Set LED pulse amplitudes in milliamps (0.0 to 51.0 mA)
+    pub fn set_led_current_ma(&mut self, led1_ma: f32, led2_ma: f32) -> Result<(), I2C::Error> {
+        let pa1 = ma_to_pulse_amplitude(led1_ma);
+        let pa2 = ma_to_pulse_amplitude(led2_ma);
+        self.set_led_pulse_amplitude(pa1, pa2)
+    }
+
     /// Configure FIFO sample averaging
     ///
     /// # Arguments
@@ -434,31 +505,33 @@ where
     /// Set FIFO almost full threshold
     ///
     /// The interrupt triggers when the FIFO has this many empty slots remaining.
+    /// Values greater than 15 are clamped to 15 (4 bits maximum).
     ///
     /// # Arguments
     ///
     /// * `samples` - Number of empty samples remaining (0-15)
     pub fn set_fifo_almost_full(&mut self, samples: u8) -> Result<(), I2C::Error> {
-        if samples > 15 {
-            // Return a dummy error - we can't construct Error::InvalidParameter without a way to convert it
-            return self.device.fifo_config().read().and(Err(self
-                .device
-                .fifo_config()
-                .read()
-                .unwrap_err()));
-        }
+        let clamped = samples.min(15);
         self.device
             .fifo_config()
-            .write(|w| w.set_fifo_a_full(samples))?;
+            .write(|w| w.set_fifo_a_full(clamped))?;
         Ok(())
     }
 
-    /// Clear FIFO pointers
+    /// Clear FIFO pointers and overflow counter
     pub fn clear_fifo(&mut self) -> Result<(), I2C::Error> {
         self.device.fifo_wr_ptr().write(|w| *w = [0u8].into())?;
         self.device.fifo_rd_ptr().write(|w| *w = [0u8].into())?;
         self.device.ovf_counter().write(|w| *w = [0u8].into())?;
         Ok(())
+    }
+
+    /// Get the number of lost samples due to FIFO overflow
+    ///
+    /// Saturates at 31 (0x1F). Cleared on reading or clearing FIFO.
+    pub fn read_overflow_counter(&mut self) -> Result<u8, I2C::Error> {
+        let count: [u8; 1] = self.device.ovf_counter().read()?.into();
+        Ok(count[0] & 0x1F)
     }
 
     /// Get the number of samples available in the FIFO
@@ -477,7 +550,7 @@ where
         Ok(available)
     }
 
-    /// Read samples from FIFO
+    /// Read samples from FIFO in a single I²C burst read transaction
     ///
     /// Each sample consists of 3 bytes per active LED channel (18-bit data, MSB first).
     /// In `SpO2` mode, each sample is 6 bytes (Red LED + IR LED).
@@ -493,38 +566,28 @@ where
         let samples_available = self.get_fifo_samples_available()?;
         let bytes_to_read = (samples_available as usize * FIFO_SAMPLE_SIZE).min(buffer.len());
 
-        for slot in buffer.iter_mut().take(bytes_to_read) {
-            let byte: [u8; 1] = self.device.fifo_data_reg().read()?.into();
-            *slot = byte[0];
+        if bytes_to_read > 0 {
+            self.device
+                .interface
+                .read(0x07, &mut buffer[..bytes_to_read])?;
         }
 
         Ok(bytes_to_read)
     }
 
-    /// Read a single `SpO2` sample from FIFO (Red + IR)
+    /// Read a single `SpO2` sample from FIFO (Red + IR) in a single burst transaction
     ///
     /// # Returns
     ///
     /// Tuple of (`red_led`, `ir_led`) 18-bit values
     pub fn read_fifo_sample(&mut self) -> Result<(u32, u32), I2C::Error> {
-        let red = self.read_led_sample()?;
-        let ir = self.read_led_sample()?;
+        let mut buf = [0u8; 6];
+        self.device.interface.read(0x07, &mut buf)?;
+
+        let red = ((u32::from(buf[0]) & 0x03) << 16) | (u32::from(buf[1]) << 8) | u32::from(buf[2]);
+        let ir = ((u32::from(buf[3]) & 0x03) << 16) | (u32::from(buf[4]) << 8) | u32::from(buf[5]);
 
         Ok((red, ir))
-    }
-
-    /// Read a single LED sample (3 bytes, 18-bit data)
-    fn read_led_sample(&mut self) -> Result<u32, I2C::Error> {
-        let b1: [u8; 1] = self.device.fifo_data_reg().read()?.into();
-        let b2: [u8; 1] = self.device.fifo_data_reg().read()?.into();
-        let b3: [u8; 1] = self.device.fifo_data_reg().read()?.into();
-
-        let byte1 = u32::from(b1[0]);
-        let byte2 = u32::from(b2[0]);
-        let byte3 = u32::from(b3[0]);
-
-        let value = ((byte1 & 0x03) << 16) | (byte2 << 8) | byte3;
-        Ok(value)
     }
 
     /// Enable FIFO almost full interrupt
@@ -605,6 +668,19 @@ where
         self.device.interrupt_status_2().read()
     }
 
+    /// Read all interrupt flags combined
+    pub fn read_interrupt_flags(&mut self) -> Result<InterruptFlags, I2C::Error> {
+        let s1 = self.read_interrupt_status_1()?;
+        let s2 = self.read_interrupt_status_2()?;
+        Ok(InterruptFlags {
+            almost_full: s1.a_full(),
+            data_ready: s1.ppg_rdy(),
+            alc_overflow: s1.alc_ovf(),
+            power_ready: s1.pwr_rdy(),
+            die_temp_ready: s2.die_temp_rdy(),
+        })
+    }
+
     /// Start a single temperature conversion
     pub fn start_temperature_conversion(&mut self) -> Result<(), I2C::Error> {
         self.device
@@ -632,6 +708,18 @@ where
     pub fn is_temperature_ready(&mut self) -> Result<bool, I2C::Error> {
         let status = self.device.interrupt_status_2().read()?;
         Ok(status.die_temp_rdy())
+    }
+
+    /// Initiate and wait for a single temperature conversion
+    ///
+    /// Starts conversion, delays for the specified duration (conversion takes ~29ms), and reads temperature in °C.
+    pub fn measure_temperature(
+        &mut self,
+        delay: &mut impl hal::delay::DelayNs,
+    ) -> Result<f32, I2C::Error> {
+        self.start_temperature_conversion()?;
+        delay.delay_ms(30);
+        self.read_temperature()
     }
 
     /// Release the I2C bus
@@ -671,12 +759,11 @@ where
     }
 
     /// Verify the part ID (async)
-    pub async fn verify_part_id(&mut self) -> Result<(), I2C::Error> {
+    ///
+    /// Returns `Ok(true)` if the part ID matches the expected value (0x15), `Ok(false)` otherwise.
+    pub async fn verify_part_id(&mut self) -> Result<bool, I2C::Error> {
         let part_id: [u8; 1] = self.device.part_id().read_async().await?.into();
-        if part_id[0] != PART_ID {
-            let _ = self.device.part_id().read_async().await?;
-        }
-        Ok(())
+        Ok(part_id[0] == PART_ID)
     }
 
     /// Get the revision ID (async)
@@ -712,21 +799,65 @@ where
         Ok(())
     }
 
-    /// Read samples from FIFO (async)
+    /// Configure Multi-LED time slots (async)
+    pub async fn set_multi_led_slots(
+        &mut self,
+        slot1: Slot,
+        slot2: Slot,
+        slot3: Slot,
+        slot4: Slot,
+    ) -> Result<(), I2C::Error> {
+        self.device
+            .multi_led_ctrl_1()
+            .write_async(|w| {
+                w.set_slot_1(slot1);
+                w.set_slot_2(slot2);
+            })
+            .await?;
+        self.device
+            .multi_led_ctrl_2()
+            .write_async(|w| {
+                w.set_slot_3(slot3);
+                w.set_slot_4(slot4);
+            })
+            .await?;
+        Ok(())
+    }
+
+    /// Get the number of lost samples due to FIFO overflow (async)
+    pub async fn read_overflow_counter(&mut self) -> Result<u8, I2C::Error> {
+        let count: [u8; 1] = self.device.ovf_counter().read_async().await?.into();
+        Ok(count[0] & 0x1F)
+    }
+
+    /// Read samples from FIFO (async) using I²C burst read
     pub async fn read_fifo(&mut self, buffer: &mut [u8]) -> Result<usize, I2C::Error> {
         let samples_available = self.get_fifo_samples_available().await?;
         let bytes_to_read = (samples_available as usize * FIFO_SAMPLE_SIZE).min(buffer.len());
 
-        for slot in buffer.iter_mut().take(bytes_to_read) {
-            let byte: [u8; 1] = self.device.fifo_data_reg().read_async().await?.into();
-            *slot = byte[0];
+        if bytes_to_read > 0 {
+            self.device
+                .interface
+                .read(0x07, &mut buffer[..bytes_to_read])
+                .await?;
         }
 
         Ok(bytes_to_read)
     }
 
+    /// Read a single `SpO2` sample from FIFO (Red + IR) (async) in a single burst transaction
+    pub async fn read_fifo_sample(&mut self) -> Result<(u32, u32), I2C::Error> {
+        let mut buf = [0u8; 6];
+        self.device.interface.read(0x07, &mut buf).await?;
+
+        let red = ((u32::from(buf[0]) & 0x03) << 16) | (u32::from(buf[1]) << 8) | u32::from(buf[2]);
+        let ir = ((u32::from(buf[3]) & 0x03) << 16) | (u32::from(buf[4]) << 8) | u32::from(buf[5]);
+
+        Ok((red, ir))
+    }
+
     /// Get the number of samples available in the FIFO (async)
-    async fn get_fifo_samples_available(&mut self) -> Result<u8, I2C::Error> {
+    pub async fn get_fifo_samples_available(&mut self) -> Result<u8, I2C::Error> {
         let write_ptr: [u8; 1] = self.device.fifo_wr_ptr().read_async().await?.into();
         let read_ptr: [u8; 1] = self.device.fifo_rd_ptr().read_async().await?.into();
         let write_ptr = write_ptr[0] & 0x1F;
@@ -750,6 +881,19 @@ where
 
         let temp = f32::from(int_part) + (f32::from(frac_part) * 0.0625);
         Ok(temp)
+    }
+
+    /// Initiate and wait for a single temperature conversion (async)
+    pub async fn measure_temperature(
+        &mut self,
+        delay: &mut impl hal_async::delay::DelayNs,
+    ) -> Result<f32, I2C::Error> {
+        self.device
+            .die_temp_config()
+            .write_async(|w| w.set_temp_en(true))
+            .await?;
+        delay.delay_ms(30).await;
+        self.read_temperature().await
     }
 
     /// Release the I2C bus

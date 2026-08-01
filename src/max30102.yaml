@@ -368,6 +368,7 @@ MULTI_LED_CTRL_1:
       access: RW
       description: |
         Time Slot 2 LED Control (0=None, 1=LED1/Red, 2=LED2/IR, 3=Pilot)
+      try_conversion: Slot
     SLOT1:
       base: uint
       start: 0
@@ -376,7 +377,7 @@ MULTI_LED_CTRL_1:
       description: |
         Time Slot 1 LED Control
       try_conversion:
-        name: SLOT
+        name: Slot
         None:
           value: 0b000
           description: No LED active
@@ -404,6 +405,7 @@ MULTI_LED_CTRL_2:
       access: RW
       description: |
         Time Slot 4 LED Control (0=None, 1=LED1/Red, 2=LED2/IR, 3=Pilot)
+      try_conversion: Slot
     SLOT3:
       base: uint
       start: 0
@@ -411,6 +413,7 @@ MULTI_LED_CTRL_2:
       access: RW
       description: |
         Time Slot 3 LED Control (0=None, 1=LED1/Red, 2=LED2/IR, 3=Pilot)
+      try_conversion: Slot
 
 DIE_TEMP_INT:
   type: register

@@ -53,26 +53,9 @@ run_check_no_std() {
     echo "SKIP: no_std target not configured"
     return 0
   fi
-  case "$(basename "$repo_root")" in
-    bq25887)
-      rustup target add thumbv8m.main-none-eabihf
-      cargo check --target thumbv8m.main-none-eabihf
-      cargo check --target thumbv8m.main-none-eabihf --features defmt-03
-      cargo check --target thumbv8m.main-none-eabihf --features log
-      ;;
-    lis2de12)
-      rustup target add thumbv8m.main-none-eabihf
-      cargo check --target thumbv8m.main-none-eabihf
-      cargo check --target thumbv8m.main-none-eabihf --features async
-      cargo check --target thumbv8m.main-none-eabihf --features defmt-03
-      cargo check --target thumbv8m.main-none-eabihf --features async,defmt-03
-      ;;
-    *)
-      rustup target add "${NO_STD_TARGET}"
-      # shellcheck disable=SC2086
-      cargo check --lib ${NO_STD_CARGO_ARGS:---no-default-features} --target "${NO_STD_TARGET}"
-      ;;
-  esac
+  rustup target add "${NO_STD_TARGET}"
+  # shellcheck disable=SC2086
+  cargo check --lib ${NO_STD_CARGO_ARGS:---no-default-features} --target "${NO_STD_TARGET}"
 }
 
 run_msrv() {
@@ -97,13 +80,8 @@ run_clippy() {
 }
 
 run_docs() {
-  if [[ -n "${CI_HOST_TARGET:-}" && "$(basename "$repo_root")" == "lis2de12" ]]; then
-    # shellcheck disable=SC2086
-    cargo doc --lib --no-deps --features std $(host_target_args)
-  else
-    # shellcheck disable=SC2086
-    cargo doc ${DOCS_ARGS:---lib --no-deps --all-features} $(host_target_args)
-  fi
+  # shellcheck disable=SC2086
+  cargo doc ${DOCS_ARGS:---lib --no-deps --all-features} $(host_target_args)
 }
 
 run_check() {
